@@ -1,0 +1,98 @@
+#!/bin/bash
+
+echo '
+#    # #  ####  #    # ##### #    #   ##   #####  ###### 
+##   # # #    # #    #   #   ##  ##  #  #  #    # #      
+# #  # # #      ######   #   # ## # #    # #    # #####  
+#  # # # #  ### #    #   #   #    # ###### #####  #      
+#   ## # #    # #    #   #   #    # #    # #   #  #      
+#    # #  ####  #    #   #   #    # #    # #    # ######
+'
+echo ''
+echo 'DevSecOps - CI/CD Pipeline Tools - Copyright (C) 2022 by Fabio Sbano <me@fsbano.io>'
+echo ''
+
+if [ $# -eq 0 ]
+then
+  echo "Usage: ${0} jboss-eap-7/eap74-openjdk11-openshift-rhel8 --tag 7.4.5-2 --severity HIGH,CRITICAL --quiet --exit-code 1"
+  echo '' 
+  exit 1
+fi
+
+API_CATALOG_BASE_URL=https://catalog.redhat.com
+CONTAINER_NAME=$( echo ${1} | egrep -o '^\w{1,}?(/\w{1,}|/\w{1,}?(-\w{1,}){1,}|(-\w{1,}){1,}/\w{1,}?(-\w{1,}){1,})' )
+
+catalog() 
+{
+  curl "${API_CATALOG_BASE_URL}/api/containers/v1/repositories/registry/registry.access.redhat.com/repository/${1}/images?page_size=500&page=0&exclude=data.repositories.comparison.advisory_rpm_mapping,data.brew,data.cpe_ids,data.top_layer_id" 2>/dev/null | jq -c ".data[].repositories[].comparison.with_nvr" | while read line
+do
+  echo ${line} | sed -e 's/"//g' | grep -v '^null' 
+done
+}
+
+vulnerability()
+{
+  if [ -z "${TAG}" ]
+  then 
+    FILTER=$( catalog ${CONTAINER_NAME} | sort | uniq )
+  else
+    FILTER=$( catalog ${CONTAINER_NAME} | sort | uniq | egrep -w "${TAG}" )
+  fi
+  echo ${FILTER} | tr ' ' '\n' | while read CATALOG_CONTAINER_NAME
+   do
+     CONTAINER_TAG=$( echo ${CATALOG_CONTAINER_NAME} | egrep -o '([0-9].[0-9]{1,}-[0-9]{1,}.[0-9]{1,}|[0-9].[0-9].[0-9]-[0-9]|[0-9].[0-9].[0-9]-[0-9].[0-9]{1,})' )
+     CONTAINER_ID=$( curl "${API_CATALOG_BASE_URL}/api/containers/v1/repositories/registry/registry.access.redhat.com/repository/${CONTAINER_NAME}/images?page_size=500&page=0&exclude=data.repositories.comparison.advisory_rpm_mapping,data.brew,data.cpe_ids,data.top_layer_id" 2>/dev/null | jq -c ".data[] | select ( .parsed_data.labels[].value == \"https://access.redhat.com/containers/#/registry.access.redhat.com/${CONTAINER_NAME}/images/${CONTAINER_TAG}\" and .parsed_data.architecture == \"amd64\" ) ._links.vulnerabilities.href " 2>/dev/null | sed -e 's/"//g' )
+     CONTAINER_VULNERABILITY=$( curl "${API_CATALOG_BASE_URL}/api/containers/${CONTAINER_ID}?page_size=500&page=0" 2>/dev/null | jq -c '.data[].cve_id' 2>/dev/null | wc -l )
+     if [ ${CONTAINER_VULNERABILITY} -gt 0 ]
+     then
+       echo 1 > /tmp/isvulnerable.$$
+       echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG} - [ \e[31m${CONTAINER_VULNERABILITY}\e[0m ]"
+     else
+       echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}"
+     fi
+   done
+   [ ! -f /tmp/isvulnerable.$$ ] && echo 0 > /tmp/isvulnerable.$$
+}
+
+while [ $# -gt 0 ]; do
+ case $1 in
+   --tag)
+     shift
+     TAG=${1}
+     [ -z "${TAG}" ] && echo -e "--tag \e[31mvalue cannot be empty\e[0m" && OPTIONS=1 && break
+     ;;
+   --severity)
+     shift
+     SEVERITY="${1}"
+     [ -z "${SEVERITY}" ] && echo -e "--severity \e[31mvalue cannot be empty\e[0m" && OPTIONS=1 && break
+     ;;
+   --quiet)
+		 QUITE=1
+		 ;;
+   --exit-code)
+     shift
+		 EXIT_CODE="${1}"
+     [ -z "${EXIT_CODE}" ] && echo -e "--exit-code \e[31mvalue cannot be empty\e[0m" && OPTIONS=1 && break
+		 ;;
+	 *)
+	   OPTIONS=0
+	   echo ${1} | egrep -o '^\w{1,}?(/\w{1,}|/\w{1,}?(-\w{1,}){1,}|(-\w{1,}){1,}/\w{1,}?(-\w{1,}){1,})' &>/dev/null
+	   if [ $? -eq 1 ] 
+	   then
+       echo "Invalid Option"
+	     OPTIONS=1
+       break
+     fi 
+	   ;;
+ esac
+ shift;
+done
+
+[ ${OPTIONS} -eq 0 ] && vulnerability
+
+ISVULNERABLE=$( cat /tmp/isvulnerable.$$ ; rm -f /tmp/isvulnerable.$$ )
+
+echo ''
+
+[ ${ISVULNERABLE} -eq 1 ] && exit 1 || exit 0
+
