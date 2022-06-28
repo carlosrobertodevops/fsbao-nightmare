@@ -71,9 +71,9 @@ vulnerability()
        CONTAINER_VULNERABILITY=$( cat "$( dirname ${CONTAINER_NAME} )/${ID}" | jq -c '.data[].cve_id' 2>/dev/null | wc -l )
        if [ ${CONTAINER_VULNERABILITY} -gt 0 ]
        then
-         echo 1 > /tmp/isvulnerable.$$
          if [ ${SECURE_IMAGE_ONLY} -eq 0 ]
          then
+           echo 1 > /tmp/isvulnerable.$$
            echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}" 
            echo "$( cat $( dirname ${CONTAINER_NAME} )/${ID} | jq -c '.data[].severity' | sort | uniq -c | sed -e 's/"//g' | tr '\n' ' ' ) "
            echo ''
@@ -126,9 +126,10 @@ done
 
 [ ${OPTIONS} -eq 0 ] && cache && vulnerability
 
-if [ -f /tmp/isvulnerable.$$ ]
+if [ -f /tmp/isvulnerable.$$ ] && [ "${SECURE_IMAGE_ONLY}" -eq 0 ]
 then
-  ISVULNERABLE=$( cat /tmp/isvulnerable.$$ ; rm -f /tmp/isvulnerable.$$ )
+  rm -f /tmp/isvulnerable.$$
+  ISVULNERABLE=1
 else
   ISVULNERABLE=0
 fi
