@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -xv
+
 echo '
 #    # #  ####  #    # ##### #    #   ##   #####  ###### 
 ##   # # #    # #    #   #   ##  ##  #  #  #    # #      
@@ -21,36 +23,27 @@ fi
 
 API_CATALOG_BASE_URL=https://catalog.redhat.com
 CONTAINER_NAME=$( echo ${1} | egrep -o '^\w{1,}?(/\w{1,}|/\w{1,}?(-\w{1,}){1,}|(-\w{1,}){1,}/\w{1,}?(-\w{1,}){1,})' )
+mkdir -p "$( dirname ${CONTAINER_NAME} )"
 
 # Enterprise speedboost 
 CREATE_CACHE_IMAGE=0
 
 cache()
 {
-  echo "${1}" | egrep "images$" &>/dev/null
-  if [ $? -eq 0 ]
-  then
-    CONTAINER_REPOSITORY=$( echo "${CONTAINER_NAME}" | egrep -o "$( dirname ${CONTAINER_NAME} )" )
-    CONTAINER_REPOSITORY_NAME=$( basename "${CONTAINER_NAME}" )
-    # Erase Cache - >1D
-    [ ! -z "${CONTAINER_REPOSITORY}" ] && find ${CONTAINER_REPOSITORY} -type f -mtime +1 -delete
-    #
-    if [ ! -f "${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_NAME}" ]
-    then
-      mkdir -p "$( dirname ${CONTAINER_REPOSITORY} )"
-      CREATE_CACHE_IMAGE=1
-    fi
+  [ -d "$( dirname ${CONTAINER_NAME} )" ] && find $( dirname ${CONTAINER_NAME} ) -type f -mtime +1 -delete
+  if [ ! -f "${CONTAINER_NAME}" ]
+   then
+     CREATE_CACHE_IMAGE=1
   fi
 }
 
 catalog() 
 {
-  cache images
   if [ ${CREATE_CACHE_IMAGE} -eq 1 ]
   then
-    curl "${API_CATALOG_BASE_URL}/api/containers/v1/repositories/registry/registry.access.redhat.com/repository/${1}/images?page_size=500&page=0&exclude=data.repositories.comparison.advisory_rpm_mapping,data.brew,data.cpe_ids,data.top_layer_id" 1> "${CONTAINER_REPOSITORY}"/"${CONTAINER_REPOSITORY_NAME}"
+    curl "${API_CATALOG_BASE_URL}/api/containers/v1/repositories/registry/registry.access.redhat.com/repository/${1}/images?page_size=500&page=0&exclude=data.repositories.comparison.advisory_rpm_mapping,data.brew,data.cpe_ids,data.top_layer_id" 1> "${CONTAINER_NAME}" 2>/dev/null
   fi
-  cat "${CONTAINER_REPOSITORY}/${CONTAINER_REPOSITORY_NAME}" | jq -c ".data[].repositories[].comparison.with_nvr" | while read line
+  cat "${CONTAINER_NAME}" | jq -c ".data[].repositories[].comparison.with_nvr" | while read line
   do
     echo ${line} | sed -e 's/"//g' | grep -v '^null'
   done
@@ -66,20 +59,23 @@ vulnerability()
   fi
   echo ${FILTER} | tr ' ' '\n' | while read CATALOG_CONTAINER_NAME
    do
-     CONTAINER_TAG=$( echo ${CATALOG_CONTAINER_NAME} | egrep -o '([0-9].[0-9]{1,}-[0-9]{1,}.[0-9]{1,}|[0-9].[0-9].[0-9]-[0-9]|[0-9].[0-9].[0-9]-[0-9].[0-9]{1,})' )
+     CONTAINER_TAG=$( echo ${CATALOG_CONTAINER_NAME} | egrep -o '([0-9].[0-9]{1,}-[0-9]{1,}|[0-9].[0-9]{1,}-[0-9]{1,}.[0-9]{1,}|[0-9].[0-9].[0-9]-[0-9]|[0-9].[0-9].[0-9]-[0-9].[0-9]{1,})' )
      CONTAINER_ID=$( cat "${CONTAINER_NAME}" | jq -c ".data[] | select ( .parsed_data.labels[].value == \"https://access.redhat.com/containers/#/registry.access.redhat.com/${CONTAINER_NAME}/images/${CONTAINER_TAG}\" and .parsed_data.architecture == \"amd64\" ) ._links.vulnerabilities.href " 2>/dev/null | sed -e 's/"//g' )
-     ID=$( echo "${CONTAINER_ID}" | egrep -o '\w{24}' )
-     if [ ! -f "$( dirname ${CONTAINER_NAME} )/${ID}" ]
-     then
-       curl "${API_CATALOG_BASE_URL}/api/containers/${CONTAINER_ID}?page_size=500&page=0" 1> "$( dirname ${CONTAINER_NAME} )"/"${ID}" 2>/dev/null
-     fi
-     CONTAINER_VULNERABILITY=$( cat "$( dirname ${CONTAINER_NAME} )/${ID}" | jq -c '.data[].cve_id' 2>/dev/null | wc -l )
-     if [ ${CONTAINER_VULNERABILITY} -gt 0 ]
-     then
-       echo 1 > /tmp/isvulnerable.$$
-       echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG} - [ \e[31m${CONTAINER_VULNERABILITY}\e[0m ]"
-     else
-       echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}"
+     if [ ! -z "${CONTAINER_ID}" ]
+     then 
+       ID=$( echo "${CONTAINER_ID}" | egrep -o '\w{24}' )
+       if [ ! -f "$( dirname ${CONTAINER_NAME} )/${ID}" ]
+       then
+         curl "${API_CATALOG_BASE_URL}/api/containers/${CONTAINER_ID}?page_size=500&page=0" 1> "$( dirname ${CONTAINER_NAME} )"/"${ID}" 2>/dev/null
+       fi
+       CONTAINER_VULNERABILITY=$( cat "$( dirname ${CONTAINER_NAME} )/${ID}" | jq -c '.data[].cve_id' 2>/dev/null | wc -l )
+       if [ ${CONTAINER_VULNERABILITY} -gt 0 ]
+       then
+         echo 1 > /tmp/isvulnerable.$$
+         echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG} - [ \e[31m${CONTAINER_VULNERABILITY}\e[0m ]"
+       else
+         echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}"
+       fi
      fi
    done
    [ ! -f /tmp/isvulnerable.$$ ] && echo 0 > /tmp/isvulnerable.$$
@@ -119,7 +115,7 @@ while [ $# -gt 0 ]; do
  shift;
 done
 
-[ ${OPTIONS} -eq 0 ] && vulnerability
+[ ${OPTIONS} -eq 0 ] && cache && vulnerability
 
 ISVULNERABLE=$( cat /tmp/isvulnerable.$$ ; rm -f /tmp/isvulnerable.$$ )
 
