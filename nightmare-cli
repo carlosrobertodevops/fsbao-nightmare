@@ -126,7 +126,12 @@ done
 
 [ ${OPTIONS} -eq 0 ] && cache && vulnerability
 
-ISVULNERABLE=$( cat /tmp/isvulnerable.$$ ; rm -f /tmp/isvulnerable.$$ )
+if [ -f /tmp/isvulnerable.$$ ]
+then
+  ISVULNERABLE=$( cat /tmp/isvulnerable.$$ ; rm -f /tmp/isvulnerable.$$ )
+else
+  ISVULNERABLE=0
+fi
 
 echo ''
 
