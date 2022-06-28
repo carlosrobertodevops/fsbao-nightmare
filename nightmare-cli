@@ -70,7 +70,9 @@ vulnerability()
        if [ ${CONTAINER_VULNERABILITY} -gt 0 ]
        then
          echo 1 > /tmp/isvulnerable.$$
-         echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG} - [ \e[31m${CONTAINER_VULNERABILITY}\e[0m ]"
+         echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}" 
+         echo "$( cat $( dirname ${CONTAINER_NAME} )/${ID} | jq -c '.data[].severity' | sort | uniq -c | sed -e 's/"//g' | tr '\n' ' ' ) "
+         echo ''
        else
          echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}"
        fi
