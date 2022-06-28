@@ -79,8 +79,13 @@ vulnerability()
    [ ! -f /tmp/isvulnerable.$$ ] && echo 0 > /tmp/isvulnerable.$$
 }
 
+SECURE_IMAGE_ONLY=0
 while [ $# -gt 0 ]; do
  case $1 in
+   --secure-image-only)
+     shift
+     SECURE_IMAGE_ONLY=1
+     ;;
    --tag)
      shift
      TAG=${1}
@@ -113,7 +118,12 @@ while [ $# -gt 0 ]; do
  shift;
 done
 
-[ ${OPTIONS} -eq 0 ] && cache && vulnerability
+if [ "${SECURE_IMAGE_ONLY}" -eq 1 ]
+then
+ [ ${OPTIONS} -eq 0 ] && cache && vulnerability | grep -v ']$'
+else
+ [ ${OPTIONS} -eq 0 ] && cache && vulnerability
+fi
 
 ISVULNERABLE=$( cat /tmp/isvulnerable.$$ ; rm -f /tmp/isvulnerable.$$ )
 
