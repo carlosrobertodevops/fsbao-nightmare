@@ -23,6 +23,8 @@ API_CATALOG_BASE_URL=https://catalog.redhat.com
 CONTAINER_NAME=$( echo ${1} | egrep -o '^\w{1,}?(/\w{1,}|/\w{1,}?(-\w{1,}){1,}|(-\w{1,}){1,}/\w{1,}?(-\w{1,}){1,})' )
 mkdir -p "$( dirname ${CONTAINER_NAME} )"
 
+SECURE_IMAGE_ONLY=0
+
 # Enterprise speedboost 
 CREATE_CACHE_IMAGE=0
 
@@ -70,9 +72,12 @@ vulnerability()
        if [ ${CONTAINER_VULNERABILITY} -gt 0 ]
        then
          echo 1 > /tmp/isvulnerable.$$
-         echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}" 
-         echo "$( cat $( dirname ${CONTAINER_NAME} )/${ID} | jq -c '.data[].severity' | sort | uniq -c | sed -e 's/"//g' | tr '\n' ' ' ) "
-         echo ''
+         if [ ${SECURE_IMAGE_ONLY} -eq 0 ]
+         then
+           echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}" 
+           echo "$( cat $( dirname ${CONTAINER_NAME} )/${ID} | jq -c '.data[].severity' | sort | uniq -c | sed -e 's/"//g' | tr '\n' ' ' ) "
+           echo ''
+         fi
        else
          echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}"
        fi
@@ -81,7 +86,6 @@ vulnerability()
    [ ! -f /tmp/isvulnerable.$$ ] && echo 0 > /tmp/isvulnerable.$$
 }
 
-SECURE_IMAGE_ONLY=0
 while [ $# -gt 0 ]; do
  case $1 in
    --secure-image-only)
@@ -120,12 +124,7 @@ while [ $# -gt 0 ]; do
  shift;
 done
 
-if [ "${SECURE_IMAGE_ONLY}" -eq 1 ]
-then
- [ ${OPTIONS} -eq 0 ] && cache && vulnerability | grep -v ']$'
-else
- [ ${OPTIONS} -eq 0 ] && cache && vulnerability
-fi
+[ ${OPTIONS} -eq 0 ] && cache && vulnerability
 
 ISVULNERABLE=$( cat /tmp/isvulnerable.$$ ; rm -f /tmp/isvulnerable.$$ )
 
