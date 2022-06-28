@@ -53,7 +53,7 @@ vulnerability()
   then 
     FILTER=$( catalog ${CONTAINER_NAME} | sort | uniq )
   else
-    FILTER=$( catalog ${CONTAINER_NAME} | sort | uniq | egrep -w "${TAG}" )
+    FILTER=$( catalog ${CONTAINER_NAME} | sort | uniq | egrep -w "${TAG}$" )
   fi
   echo ${FILTER} | tr ' ' '\n' | while read CATALOG_CONTAINER_NAME
    do
