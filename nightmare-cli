@@ -135,13 +135,14 @@ done
 
 [ ${OPTIONS} -eq 0 ] && cache && vulnerability
 
-if [ -f /tmp/isvulnerable.$$ ] && [ "${SECURE_IMAGE_ONLY}" -eq 0 ]
-then
-  rm -f /tmp/isvulnerable.$$
-  ISVULNERABLE=1
-else
-  ISVULNERABLE=0
+egrep ^0 /tmp/isvulnerable.$$ &>/dev/null
+if [ $? -eq 0 ]
+ then
+   ISVULNERABLE=0
+ else
+   ISVULNERABLE=1
 fi
+rm -f /tmp/isvulnerable.$$
 
 echo ''
 
