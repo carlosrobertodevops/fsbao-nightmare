@@ -14,7 +14,7 @@ echo ''
 
 if [ $# -eq 0 ]
 then
-  echo "Usage: ${0} jboss-eap-7/eap74-openjdk11-openshift-rhel8 --tag 7.4.5-2 --severity HIGH,CRITICAL --quiet --exit-code 1"
+  echo "Usage: ${0} jboss-eap-7/eap74-openjdk11-openshift-rhel8 --tag 7.4.5-2 --severity Critical,Important --quiet --exit-code 1"
   echo '' 
   exit 1
 fi
@@ -74,12 +74,21 @@ vulnerability()
          if [ ${SECURE_IMAGE_ONLY} -eq 0 ]
          then
            echo 1 > /tmp/isvulnerable.$$
-           echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}" 
-           echo "$( cat $( dirname ${CONTAINER_NAME} )/${ID} | jq -c '.data[].severity' | sort | uniq -c | sed -e 's/"//g' | tr '\n' ' ' ) "
-           echo ''
+           if [ ! -z "${SEVERITY}" ]
+           then
+              echo "$( cat $( dirname ${CONTAINER_NAME} )/${ID} | jq -c '.data[].severity' | sort | uniq -c | sed -e 's/"//g' | tr '\n' ' ' ) " | egrep -i "( $( echo "${SEVERITY}" | tr ',' '|' ) )" &>/dev/null && VISIBILITY=1 || VISIBILITY=0
+              if [ "${VISIBILITY}" -eq 1 ]
+              then
+                echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}" 
+                echo "$( cat $( dirname ${CONTAINER_NAME} )/${ID} | jq -c '.data[].severity' | sort | uniq -c | sed -e 's/"//g' | tr '\n' ' ' ) "
+              fi
+           else
+             echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}" 
+             echo "$( cat $( dirname ${CONTAINER_NAME} )/${ID} | jq -c '.data[].severity' | sort | uniq -c | sed -e 's/"//g' | tr '\n' ' ' ) "
+           fi
          fi
        else
-         echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}"
+         [ -z "${SEVERITY}" ] && echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}"
        fi
      fi
    done
