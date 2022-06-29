@@ -24,6 +24,7 @@ CONTAINER_NAME=$( echo ${1} | egrep -o '^\w{1,}?(/\w{1,}|/\w{1,}?(-\w{1,}){1,}|(
 mkdir -p "$( dirname ${CONTAINER_NAME} )"
 
 SECURE_IMAGE_ONLY=0
+CVE=0
 
 # Enterprise speedboost 
 CREATE_CACHE_IMAGE=0
@@ -46,6 +47,21 @@ catalog()
   cat "${CONTAINER_NAME}" | jq -c ".data[].repositories[].comparison.with_nvr" | while read line
   do
     echo ${line} | sed -e 's/"//g' | grep -v '^null'
+  done
+}
+
+cve()
+{
+  cat ${1} | jq -c '.data[] | .cve_id, .packages[].rpm_nvra' | sed -e "s/\[//g" -e "s/\]//g" -e 's/"//g' | tr ',' '\n' | while read line
+  do
+    CVE_ID=$( echo ${line} | egrep -i "^CVE-[0-9]{1,}-[0-9]" )
+    if [ ! -z "${CVE_ID}" ]
+    then
+      echo -e "\e[32m[${CVE_ID}]\e[0m"
+    else 
+      echo -e " - ${line}"
+    fi
+    unset CVE_ID
   done
 }
 
@@ -87,6 +103,11 @@ vulnerability()
              echo "$( cat $( dirname ${CONTAINER_NAME} )/${ID} | jq -c '.data[].severity' | sort | uniq -c | sed -e 's/"//g' | tr '\n' ' ' ) "
            fi
          fi
+       if [ ! -z "${TAG}" ] && [ "${CVE}" -eq 1 ]
+       then 
+         echo ''
+         cve "$( dirname ${CONTAINER_NAME} )/${ID}"
+       fi
        else
          [ -z "${SEVERITY}" ] && echo -e "\e[34m$( date "+%Y-%m-%d %H:%M:%S" )\e[0m" "\e[33m[INFO]\e[0m ${CONTAINER_NAME}:${CONTAINER_TAG}"
        fi
@@ -105,6 +126,10 @@ while [ $# -gt 0 ]; do
      shift
      TAG=${1}
      [ -z "${TAG}" ] && echo -e "--tag \e[31mvalue cannot be empty\e[0m" && OPTIONS=1 && break
+     ;;
+   --cve)
+     shift
+     CVE=1
      ;;
    --severity)
      shift
